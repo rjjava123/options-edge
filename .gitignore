@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables (CRITICAL - has your API keys)
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes / data
+postgres_data/
+data/
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+frontend/.next/
+frontend/node_modules/
+
+# Logs
+*.log
+
+# Byte-compiled
+*.pyc
