@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { discoveryApi, type Thesis } from "@/lib/api";
+import { discoveryApi, type Thesis, type DiscoveryStatus } from "@/lib/api";
 import ThesisCard from "@/components/ThesisCard";
 
 const CLASSIFICATIONS = ["catalyst", "technical", "mean_reversion", "flow_driven", "range_bound"];
@@ -12,10 +12,11 @@ export default function DiscoveryPage() {
   const [filtered, setFiltered] = useState<Thesis[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [status, setStatus] = useState<{ last_run: string | null; candidates_found: number | null }>({
-    last_run: null,
-    candidates_found: null,
+  const [status, setStatus] = useState<DiscoveryStatus>({
+    is_running: false,
+    last_scan: null,
   });
+  const [resultCount, setResultCount] = useState<number>(0);
   const [classFilter, setClassFilter] = useState("");
   const [spreadFilter, setSpreadFilter] = useState("");
   const [minConf, setMinConf] = useState(0);
@@ -23,12 +24,17 @@ export default function DiscoveryPage() {
   async function load() {
     setLoading(true);
     try {
-      const [s, t] = await Promise.all([
+      const [s, r] = await Promise.all([
         discoveryApi.getStatus(),
-        discoveryApi.getLatestTheses(),
+        discoveryApi.getResults(),
       ]);
       setStatus(s);
-      setTheses(t);
+      setTheses(r.theses ?? []);
+      setResultCount(r.count ?? 0);
+    } catch {
+      // If backend is down, show empty state
+      setTheses([]);
+      setResultCount(0);
     } finally {
       setLoading(false);
     }
@@ -59,19 +65,19 @@ export default function DiscoveryPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Discovery Dashboard</h1>
-          {status.last_run && (
+          {status.last_scan && (
             <p className="text-sm text-slate-500 mt-1">
-              Last scan: {new Date(status.last_run).toLocaleString()} &mdash;{" "}
-              {status.candidates_found} candidates found
+              Last scan: {new Date(status.last_scan).toLocaleString()} &mdash;{" "}
+              {resultCount} candidates found
             </p>
           )}
         </div>
         <button
           onClick={runNow}
-          disabled={running}
+          disabled={running || status.is_running}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {running ? "Running..." : "Run Now"}
+          {running || status.is_running ? "Running..." : "Run Now"}
         </button>
       </div>
 

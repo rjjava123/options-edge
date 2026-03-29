@@ -33,15 +33,15 @@ export default function WatchlistPage() {
     await load();
   }
 
-  async function remove(id: string) {
-    await watchlistApi.remove(id);
-    setItems((prev) => prev.filter((i) => i.id !== id));
+  async function remove(item: WatchlistItem) {
+    await watchlistApi.remove(item.ticker);
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
   }
 
   async function fetchNews(ticker: string) {
     setLoadingNews((prev) => ({ ...prev, [ticker]: true }));
     try {
-      const data = await watchlistApi.getNews(ticker);
+      const data = await watchlistApi.refreshNews(ticker);
       setNews((prev) => ({ ...prev, [ticker]: data }));
     } finally {
       setLoadingNews((prev) => ({ ...prev, [ticker]: false }));
@@ -104,7 +104,7 @@ export default function WatchlistPage() {
               item={item}
               news={news[item.ticker]}
               loadingNews={loadingNews[item.ticker] ?? false}
-              onRemove={() => remove(item.id)}
+              onRemove={() => remove(item)}
               onRefreshNews={() => fetchNews(item.ticker)}
             />
           ))}

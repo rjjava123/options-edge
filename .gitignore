@@ -42,3 +42,8 @@ frontend/node_modules/
 
 # Byte-compiled
 *.pyc
+
+# Credentials and Secrets
+backend/credentials/
+backend/.env.example
+backend/.env

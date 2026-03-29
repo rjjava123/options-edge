@@ -19,25 +19,26 @@ export interface Thesis {
   ticker: string;
   created_at: string;
   flow_type: string;
-  setup_classifications: string[];
+  setup_classifications?: string[];
   direction: string;
   spread_type: string;
-  short_strike: number;
-  long_strike: number;
-  expiration_date: string;
-  entry_price: number;
-  max_profit: number;
-  max_loss: number;
-  profit_target: number;
-  stop_loss: number;
+  short_strike?: number;
+  long_strike?: number;
+  expiration_date?: string;
+  entry_price?: number;
+  max_profit?: number;
+  max_loss?: number;
+  profit_target?: number;
+  stop_loss?: number;
   confidence: number;
-  reasoning: string;
-  status: string;
-  is_active: boolean;
-  closed_at: string | null;
+  reasoning?: string;
+  status?: string;
+  is_active?: boolean;
+  closed_at?: string | null;
   daily_snapshots?: DailySnapshot[];
   system_score?: SystemScore | null;
   user_score?: UserScore | null;
+  state_snapshot?: Record<string, unknown>;
 }
 
 export interface DailySnapshot {
@@ -87,41 +88,132 @@ export interface NewsContext {
 }
 
 export interface DiscoveryStatus {
-  running: boolean;
-  last_run: string | null;
-  candidates_found: number | null;
+  is_running: boolean;
+  last_scan: string | null;
+}
+
+export interface DiscoveryResults {
+  count: number;
+  theses: Thesis[];
+}
+
+// ─── SSE Event Types ─────────────────────────────────────────────────────────
+
+export interface SSENodeStart {
+  node: string;
+}
+
+export interface SSENodeComplete {
+  node: string;
+  summary: Record<string, unknown>;
+}
+
+export interface SSENodeError {
+  node: string;
+  error: string;
+}
+
+export interface SSEProgress {
+  eventType: string;
+  data: SSENodeStart | SSENodeComplete | SSENodeError | Thesis | { message: string } | { ticker: string };
 }
 
 // ─── Discovery ────────────────────────────────────────────────────────────────
 
 export const discoveryApi = {
-  getStatus: () => request<DiscoveryStatus>("/discovery/status"),
-  runNow: () => request<{ job_id: string }>("/discovery/run", { method: "POST" }),
-  getLatestTheses: (limit = 50) =>
-    request<Thesis[]>(`/discovery/theses?limit=${limit}`),
+  getStatus: () => request<DiscoveryStatus>("/api/discovery/status"),
+  runNow: () =>
+    request<{ message: string; status: string }>("/api/discovery/run", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  getResults: () => request<DiscoveryResults>("/api/discovery/results"),
 };
 
-// ─── Validation ───────────────────────────────────────────────────────────────
+// ─── Validation (SSE stream) ─────────────────────────────────────────────────
 
 export const validationApi = {
-  analyze: (ticker: string) =>
-    request<Thesis>("/validation/analyze", {
+  /**
+   * Streams SSE events from the analysis graph for a single ticker.
+   * The caller provides an `onEvent` callback that receives each parsed event.
+   * Returns a promise that resolves when the stream ends.
+   */
+  analyzeStream: async (
+    ticker: string,
+    onEvent: (eventType: string, data: Record<string, unknown>) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const res = await fetch(`${BASE_URL}/api/validate/${encodeURIComponent(ticker)}`, {
       method: "POST",
-      body: JSON.stringify({ ticker }),
-    }),
+      headers: { "Content-Type": "application/json" },
+      signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API ${res.status}: ${text}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("No readable stream in response");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events from buffer — format: "event: <type>\ndata: <json>\n\n"
+      const parts = buffer.split("\n\n");
+      // Keep the last (possibly incomplete) chunk in the buffer
+      buffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+
+        let eventType = "message";
+        let dataStr = "";
+
+        for (const line of trimmed.split("\n")) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            dataStr = line.slice(6);
+          }
+        }
+
+        if (dataStr) {
+          try {
+            const data = JSON.parse(dataStr);
+            onEvent(eventType, data);
+          } catch {
+            // Skip malformed JSON
+          }
+        }
+      }
+    }
+  },
 };
 
 // ─── Watchlist ────────────────────────────────────────────────────────────────
 
 export const watchlistApi = {
-  list: () => request<WatchlistItem[]>("/watchlist"),
+  list: () => request<WatchlistItem[]>("/api/watchlist/"),
   add: (ticker: string, notes?: string) =>
-    request<WatchlistItem>("/watchlist", {
+    request<WatchlistItem>("/api/watchlist/", {
       method: "POST",
       body: JSON.stringify({ ticker, notes }),
     }),
-  remove: (id: string) => request<void>(`/watchlist/${id}`, { method: "DELETE" }),
-  getNews: (ticker: string) => request<NewsContext>(`/watchlist/${ticker}/news`),
+  remove: (ticker: string) =>
+    request<void>(`/api/watchlist/${encodeURIComponent(ticker)}`, { method: "DELETE" }),
+  refreshNews: (ticker: string) =>
+    request<NewsContext>(`/api/watchlist/${encodeURIComponent(ticker)}/refresh`, {
+      method: "POST",
+    }),
 };
 
 // ─── Theses ───────────────────────────────────────────────────────────────────
@@ -140,9 +232,9 @@ export const thesesApi = {
     if (params?.is_active !== undefined) qs.set("is_active", String(params.is_active));
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
-    return request<Thesis[]>(`/theses?${qs}`);
+    return request<Thesis[]>(`/api/theses/?${qs}`);
   },
-  get: (id: string) => request<Thesis>(`/theses/${id}`),
+  get: (id: string) => request<Thesis>(`/api/theses/${id}`),
   submitUserScore: (
     id: string,
     payload: {
@@ -153,20 +245,20 @@ export const thesesApi = {
       notes?: string;
     }
   ) =>
-    request<UserScore>(`/theses/${id}/score`, {
+    request<UserScore>(`/api/theses/${id}/score`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   checkTrapDetection: (id: string) =>
-    request<{ warnings: string[] }>(`/theses/${id}/trap-detection`),
-  markActive: (id: string, active: boolean) =>
-    request<Thesis>(`/theses/${id}/active`, {
-      method: "PATCH",
+    request<{ warnings: string[] }>(`/api/theses/${id}/trap-check`),
+  toggleActive: (id: string, active: boolean) =>
+    request<Thesis>(`/api/theses/${id}/activate`, {
+      method: "POST",
       body: JSON.stringify({ is_active: active }),
     }),
   close: (id: string, status: string) =>
-    request<Thesis>(`/theses/${id}/close`, {
-      method: "PATCH",
+    request<Thesis>(`/api/theses/${id}/close`, {
+      method: "POST",
       body: JSON.stringify({ status }),
     }),
 };
@@ -174,5 +266,7 @@ export const thesesApi = {
 // ─── Active Trades ────────────────────────────────────────────────────────────
 
 export const activeTradesApi = {
-  list: () => request<Thesis[]>("/active-trades"),
+  list: () => request<Thesis[]>("/api/active-trades/"),
+  getAlerts: (thesisId: string) =>
+    request<{ alerts: string[] }>(`/api/active-trades/${thesisId}/alerts`),
 };

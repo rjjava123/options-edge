@@ -38,7 +38,7 @@ export default function ThesisDetailPage() {
 
   async function toggleActive() {
     if (!thesis) return;
-    await thesesApi.markActive(id, !thesis.is_active);
+    await thesesApi.toggleActive(id, !thesis.is_active);
     await load();
   }
 

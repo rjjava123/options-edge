@@ -32,8 +32,12 @@ export default function ThesisCard({ thesis, detailed }: Props) {
 
       <div className="text-sm text-slate-600 mb-3">
         <span className="font-medium">{thesis.spread_type}</span>
-        {" · "}
-        <span>Exp {thesis.expiration_date}</span>
+        {thesis.expiration_date && (
+          <>
+            {" · "}
+            <span>Exp {thesis.expiration_date}</span>
+          </>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1 mb-3">
@@ -44,20 +48,28 @@ export default function ThesisCard({ thesis, detailed }: Props) {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-sm mb-4">
-        <div>
-          <div className="text-xs text-slate-400">Entry</div>
-          <div className="font-medium">${thesis.entry_price.toFixed(2)}</div>
+      {(thesis.entry_price != null || thesis.max_profit != null || thesis.max_loss != null) && (
+        <div className="grid grid-cols-3 gap-2 text-sm mb-4">
+          <div>
+            <div className="text-xs text-slate-400">Entry</div>
+            <div className="font-medium">
+              {thesis.entry_price != null ? `$${thesis.entry_price.toFixed(2)}` : "—"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400">Max Profit</div>
+            <div className="font-medium text-green-600">
+              {thesis.max_profit != null ? `$${thesis.max_profit.toFixed(2)}` : "—"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400">Max Loss</div>
+            <div className="font-medium text-red-600">
+              {thesis.max_loss != null ? `$${thesis.max_loss.toFixed(2)}` : "—"}
+            </div>
+          </div>
         </div>
-        <div>
-          <div className="text-xs text-slate-400">Max Profit</div>
-          <div className="font-medium text-green-600">${thesis.max_profit.toFixed(2)}</div>
-        </div>
-        <div>
-          <div className="text-xs text-slate-400">Max Loss</div>
-          <div className="font-medium text-red-600">${thesis.max_loss.toFixed(2)}</div>
-        </div>
-      </div>
+      )}
 
       {detailed && (
         <div className="text-sm text-slate-600 mb-4 line-clamp-4">
